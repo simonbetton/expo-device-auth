@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Device Auth Example",
+    "slug": "expo-device-auth-example",
+    "scheme": "device-auth-example",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.sb.expoDeviceAuthExample"
+    },
+    "android": {
+      "package": "dev.sb.expoDeviceAuthExample"
+    },
+    "plugins": [
+      [
+        "expo-device-auth",
+        {
+          "faceIDPermission": "Use Face ID to unlock the device auth example.",
+          "configureAndroidBackup": true
+        }
+      ]
+    ]
+  }
+}

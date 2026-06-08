@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "ignoreDependencies": [
+    "expo-build-properties",
+    "babel-preset-expo",
+    "react-native-quick-crypto",
+    "react-native-quick-base64"
+  ]
+}

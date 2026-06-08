@@ -1,0 +1,27 @@
+{
+  "name": "expo-device-auth-monorepo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter expo-device-auth build",
+    "test": "pnpm --filter expo-device-auth test",
+    "test:coverage": "pnpm --filter expo-device-auth test:coverage",
+    "typecheck:package": "pnpm --filter expo-device-auth typecheck",
+    "typecheck:example": "pnpm --filter expo-device-auth-example typecheck",
+    "typecheck": "pnpm typecheck:package && pnpm build && pnpm typecheck:example",
+    "verify": "pnpm test:coverage && pnpm typecheck",
+    "check": "ultracite check",
+    "fix": "ultracite fix",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "fallow": "^2.86.0",
+    "lefthook": "^2.1.9",
+    "oxfmt": "^0.53.0",
+    "oxlint": "^1.68.0",
+    "typescript": "^5.9.3",
+    "ultracite": "7.8.1"
+  },
+  "packageManager": "pnpm@11.3.0"
+}

@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+apps/example/.expo/
+apps/example/ios/
+apps/example/android/
+coverage/
+lib/
+*.tgz
+.DS_Store
+.env
+.env.*
