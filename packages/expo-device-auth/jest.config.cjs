@@ -24,11 +24,12 @@ module.exports = {
   testEnvironment: "node",
   testRegex: "(/__tests__/.*|\\.(test|spec))\\.(ts|tsx)$",
   transform: {
-    "^.+\\.(ts|tsx)$": [
+    "^.+\\.(ts|tsx|js)$": [
       "ts-jest",
       {
-        tsconfig: "tsconfig.json",
+        tsconfig: { allowJs: true, module: "CommonJS" },
       },
     ],
   },
+  transformIgnorePatterns: ["node_modules/(?!.*@noble/hashes)"],
 };
