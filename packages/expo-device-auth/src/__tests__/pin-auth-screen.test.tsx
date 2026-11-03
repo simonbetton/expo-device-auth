@@ -14,12 +14,12 @@ const fixedRandomBytes = (length: number) =>
   Uint8Array.from({ length }, (_, index) => index + 1);
 
 const enterPin = async (
-  screen: ReturnType<typeof render>,
+  screen: Awaited<ReturnType<typeof render>>,
   pin: string
 ): Promise<void> => {
   for (const digit of pin) {
     await act(async () => {
-      fireEvent.press(screen.getByText(digit));
+      await fireEvent.press(screen.getByText(digit));
       await Promise.resolve();
     });
   }
@@ -38,7 +38,7 @@ describe("pinAuthScreen", () => {
     );
     await controller.setupPin({ confirmation: "1234", pin: "1234" });
     const onResult = mockFn();
-    const screen = render(
+    const screen = await render(
       <PinAuthScreen
         controller={controller}
         pinLength={4}
@@ -71,7 +71,7 @@ describe("pinAuthScreen", () => {
     await controller.setupPin({ confirmation: "1234", pin: "1234" });
     await controller.authenticateWithPin("1234");
     const onResult = mockFn();
-    const screen = render(
+    const screen = await render(
       <PinAuthScreen
         controller={controller}
         mode="reauthenticate"
@@ -88,7 +88,7 @@ describe("pinAuthScreen", () => {
 
     for (const digit of ["1", "2", "3", "4"]) {
       await act(async () => {
-        fireEvent.press(screen.getByText(`slot-${digit}`));
+        await fireEvent.press(screen.getByText(`slot-${digit}`));
         await Promise.resolve();
       });
     }
@@ -113,7 +113,7 @@ describe("pinAuthScreen", () => {
       }
     );
     await controller.setupPin({ confirmation: "1234", pin: "1234" });
-    const screen = render(
+    const screen = await render(
       <PinAuthScreen
         controller={controller}
         pinLength={4}
@@ -145,7 +145,7 @@ describe("pinAuthScreen", () => {
     await controller.setupPin({ confirmation: "1234", pin: "1234" });
     const onResult = mockFn();
     const onForgotPin = mockFn();
-    const screen = render(
+    const screen = await render(
       <PinAuthScreen
         controller={controller}
         pinLength={4}
@@ -154,7 +154,7 @@ describe("pinAuthScreen", () => {
       />
     );
 
-    fireEvent.press(screen.getByText("Forgot PIN"));
+    await fireEvent.press(screen.getByText("Forgot PIN"));
     expect(onForgotPin).toHaveBeenCalledTimes(1);
 
     await enterPin(screen, "0000");

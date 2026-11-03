@@ -6,7 +6,7 @@ import { Pressable, Text } from "react-native";
 import { PinEntryScreen } from "../pin-entry-screen";
 import { mockFn } from "../test-support/jest-mocks";
 
-const selectedDots = (screen: ReturnType<typeof render>): boolean[] =>
+const selectedDots = (screen: Awaited<ReturnType<typeof render>>): boolean[] =>
   screen
     .getAllByText("●")
     .map((dot) => dot.props.accessibilityState?.selected ?? false);
@@ -23,21 +23,23 @@ describe("pinEntryScreen", () => {
 
   it("uses keypad input to unmute dots and submit when the configured PIN length is reached", async () => {
     const onSubmit = mockFn();
-    const screen = render(<PinEntryScreen pinLength={4} onSubmit={onSubmit} />);
+    const screen = await render(
+      <PinEntryScreen pinLength={4} onSubmit={onSubmit} />
+    );
 
     expect(selectedDots(screen)).toStrictEqual([false, false, false, false]);
 
-    fireEvent.press(screen.getByText("1"));
-    fireEvent.press(screen.getByText("2"));
+    await fireEvent.press(screen.getByText("1"));
+    await fireEvent.press(screen.getByText("2"));
     expect(selectedDots(screen)).toStrictEqual([true, true, false, false]);
 
-    fireEvent.press(screen.getByText("⌫"));
+    await fireEvent.press(screen.getByText("⌫"));
     expect(selectedDots(screen)).toStrictEqual([true, false, false, false]);
 
-    fireEvent.press(screen.getByText("2"));
-    fireEvent.press(screen.getByText("3"));
-    fireEvent.press(screen.getByText("4"));
-    fireEvent.press(screen.getByText("5"));
+    await fireEvent.press(screen.getByText("2"));
+    await fireEvent.press(screen.getByText("3"));
+    await fireEvent.press(screen.getByText("4"));
+    await fireEvent.press(screen.getByText("5"));
 
     expect(selectedDots(screen)).toStrictEqual([true, true, true, true]);
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("1234"));
@@ -54,12 +56,14 @@ describe("pinEntryScreen", () => {
     });
 
     const onSubmit = mockFn();
-    const screen = render(<PinEntryScreen pinLength={4} onSubmit={onSubmit} />);
+    const screen = await render(
+      <PinEntryScreen pinLength={4} onSubmit={onSubmit} />
+    );
 
-    fireEvent.press(screen.getByText("1"));
-    fireEvent.press(screen.getByText("2"));
-    fireEvent.press(screen.getByText("3"));
-    fireEvent.press(screen.getByText("4"));
+    await fireEvent.press(screen.getByText("1"));
+    await fireEvent.press(screen.getByText("2"));
+    await fireEvent.press(screen.getByText("3"));
+    await fireEvent.press(screen.getByText("4"));
 
     expect(requestAnimationFrameMock).toHaveBeenCalledTimes(1);
     requestAnimationFrameMock.mock.calls[0]?.[0](0);
@@ -67,28 +71,28 @@ describe("pinEntryScreen", () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
-  it("only shows Forgot PIN when the callback is explicitly provided", () => {
-    const withoutCallback = render(
+  it("only shows Forgot PIN when the callback is explicitly provided", async () => {
+    const withoutCallback = await render(
       <PinEntryScreen pinLength={4} onSubmit={mockFn()} />
     );
     expect(withoutCallback.queryByText("Forgot PIN")).toBeNull();
 
     const onForgotPin = mockFn();
-    const withCallback = render(
+    const withCallback = await render(
       <PinEntryScreen
         pinLength={4}
         onSubmit={mockFn()}
         onForgotPin={onForgotPin}
       />
     );
-    fireEvent.press(withCallback.getByText("Forgot PIN"));
+    await fireEvent.press(withCallback.getByText("Forgot PIN"));
 
     expect(onForgotPin).toHaveBeenCalledTimes(1);
   });
 
-  it("lets callers replace dots and keys with slots", () => {
+  it("lets callers replace dots and keys with slots", async () => {
     const onSubmit = mockFn();
-    const screen = render(
+    const screen = await render(
       <PinEntryScreen
         pinLength={4}
         onSubmit={onSubmit}
@@ -106,7 +110,7 @@ describe("pinEntryScreen", () => {
     );
 
     expect(screen.getByText("empty-0")).toBeTruthy();
-    fireEvent.press(screen.getByText("key-1"));
+    await fireEvent.press(screen.getByText("key-1"));
     expect(screen.getByText("filled-0")).toBeTruthy();
   });
 });

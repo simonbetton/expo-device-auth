@@ -46,11 +46,11 @@ const Consumer = () => {
 };
 
 const pressAndFlushPinSubmit = async (
-  screen: ReturnType<typeof render>,
+  screen: Awaited<ReturnType<typeof render>>,
   label: string
 ): Promise<void> => {
   await act(async () => {
-    fireEvent.press(screen.getByText(label));
+    await fireEvent.press(screen.getByText(label));
     for (let step = 0; step < 10; step += 1) {
       await Promise.resolve();
     }
@@ -59,7 +59,7 @@ const pressAndFlushPinSubmit = async (
 };
 
 const enterPin = async (
-  screen: ReturnType<typeof render>,
+  screen: Awaited<ReturnType<typeof render>>,
   pin: string
 ): Promise<void> => {
   for (const digit of pin) {
@@ -106,13 +106,13 @@ describe("deviceAuthProvider", () => {
     AppStateMock.reset();
   });
 
-  it("provides the controller through useDeviceAuth", () => {
+  it("provides the controller through useDeviceAuth", async () => {
     const controller = createDeviceAuthController(
       { pinLength: 4 },
       { storage: createMemoryDeviceAuthStorage() }
     );
 
-    const screen = render(
+    const screen = await render(
       <DeviceAuthProvider controller={controller}>
         <Consumer />
       </DeviceAuthProvider>
@@ -121,8 +121,8 @@ describe("deviceAuthProvider", () => {
     expect(screen.getByText("controller-ready")).toBeTruthy();
   });
 
-  it("fails clearly when useDeviceAuth is used outside the provider", () => {
-    expect(() => render(<Consumer />)).toThrow(
+  it("fails clearly when useDeviceAuth is used outside the provider", async () => {
+    await expect(render(<Consumer />)).rejects.toThrow(
       "useDeviceAuth must be used within DeviceAuthProvider"
     );
   });
@@ -142,7 +142,7 @@ describe("deviceAuthProvider", () => {
     await controller.authenticateWithPin("1234");
 
     const ref = React.createRef<DeviceAuthHandle>();
-    render(
+    await render(
       <DeviceAuthProvider ref={ref} controller={controller}>
         <Text>Ready</Text>
       </DeviceAuthProvider>
@@ -165,7 +165,7 @@ describe("deviceAuthProvider", () => {
       }
     );
     const ref = React.createRef<DeviceAuthHandle>();
-    render(
+    await render(
       <DeviceAuthProvider ref={ref} controller={controller}>
         <Text>Ready</Text>
       </DeviceAuthProvider>
@@ -195,7 +195,7 @@ describe("deviceAuthProvider", () => {
       }
     );
     const ref = React.createRef<DeviceAuthHandle>();
-    render(
+    await render(
       <DeviceAuthProvider ref={ref} controller={controller}>
         <Text>Ready</Text>
       </DeviceAuthProvider>
@@ -209,7 +209,7 @@ describe("deviceAuthProvider", () => {
 
   it("can create its controller from provider config and injected adapters", async () => {
     const ref = React.createRef<DeviceAuthHandle>();
-    render(
+    await render(
       <DeviceAuthProvider
         ref={ref}
         config={{ pinLength: 4 }}
@@ -241,7 +241,7 @@ describe("deviceAuthProvider", () => {
       }
     );
     const ref = React.createRef<DeviceAuthHandle>();
-    render(
+    await render(
       <DeviceAuthProvider ref={ref} controller={controller}>
         <Text>Ready</Text>
       </DeviceAuthProvider>
@@ -308,7 +308,7 @@ describe("deviceAuthProvider", () => {
     await controller.setupPin({ confirmation: "1234", pin: "1234" });
 
     const ref = React.createRef<DeviceAuthHandle>();
-    const screen = render(
+    const screen = await render(
       <DeviceAuthProvider ref={ref} controller={controller} pinLength={4}>
         <Text>Ready</Text>
       </DeviceAuthProvider>
@@ -350,7 +350,7 @@ describe("deviceAuthProvider", () => {
       await controller.setupPin({ confirmation: "1234", pin: "1234" });
 
       const ref = React.createRef<DeviceAuthHandle>();
-      const screen = render(
+      const screen = await render(
         <DeviceAuthProvider ref={ref} controller={controller} pinLength={4}>
           <Text>Ready</Text>
         </DeviceAuthProvider>
@@ -389,7 +389,7 @@ describe("deviceAuthProvider", () => {
     await controller.setupPin({ confirmation: "1234", pin: "1234" });
 
     const ref = React.createRef<DeviceAuthHandle>();
-    const screen = render(
+    const screen = await render(
       <DeviceAuthProvider
         ref={ref}
         controller={controller}
@@ -434,7 +434,7 @@ describe("deviceAuthProvider", () => {
     await controller.setupPin({ confirmation: "1234", pin: "1234" });
 
     const ref = React.createRef<DeviceAuthHandle>();
-    const screen = render(
+    const screen = await render(
       <DeviceAuthProvider
         ref={ref}
         controller={controller}
@@ -478,7 +478,7 @@ describe("deviceAuthProvider", () => {
     await controller.setupPin({ confirmation: "1234", pin: "1234" });
 
     const ref = React.createRef<DeviceAuthHandle>();
-    const screen = render(
+    const screen = await render(
       <DeviceAuthProvider ref={ref} controller={controller} pinLength={4}>
         <Text>Ready</Text>
       </DeviceAuthProvider>
@@ -491,7 +491,7 @@ describe("deviceAuthProvider", () => {
     await waitFor(() =>
       expect(screen.getByText("PIN does not match")).toBeTruthy()
     );
-    fireEvent.press(screen.getByText("Cancel"));
+    await fireEvent.press(screen.getByText("Cancel"));
 
     await expect(result).resolves.toStrictEqual({ status: "cancelled" });
   });
@@ -508,7 +508,7 @@ describe("deviceAuthProvider", () => {
     await controller.setupPin({ confirmation: "1234", pin: "1234" });
     await controller.authenticateWithPin("1234");
 
-    render(
+    await render(
       <DeviceAuthProvider controller={controller} lockOnBackground>
         <Text>Ready</Text>
       </DeviceAuthProvider>
@@ -525,14 +525,14 @@ describe("deviceAuthProvider", () => {
     });
   });
 
-  it("requires config when a controller is not provided", () => {
-    expect(() =>
+  it("requires config when a controller is not provided", async () => {
+    await expect(
       render(
         <DeviceAuthProvider>
           <Text>Ready</Text>
         </DeviceAuthProvider>
       )
-    ).toThrow(
+    ).rejects.toThrow(
       "DeviceAuthProvider requires config when controller is not provided"
     );
   });

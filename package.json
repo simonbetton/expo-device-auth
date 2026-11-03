@@ -15,13 +15,13 @@
     "prepare": "lefthook install"
   },
   "devDependencies": {
-    "@types/jest": "^29.5.14",
-    "fallow": "^2.86.0",
-    "lefthook": "^2.1.9",
-    "oxfmt": "^0.53.0",
-    "oxlint": "^1.68.0",
-    "typescript": "^5.9.3",
-    "ultracite": "7.8.1"
+    "@types/jest": "^30.0.0",
+    "fallow": "^3.38.1",
+    "lefthook": "^2.2.2",
+    "oxfmt": "^0.75.0",
+    "oxlint": "^1.90.0",
+    "typescript": "^6.0.3",
+    "ultracite": "8.1.1"
   },
   "packageManager": "pnpm@11.3.0"
 }

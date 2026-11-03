@@ -6,46 +6,49 @@ import { Text } from "react-native";
 import { ChangePinScreen, PinSetupScreen } from "../pin-flow-screens";
 import { mockFn } from "../test-support/jest-mocks";
 
-const enterPin = (screen: ReturnType<typeof render>, pin: string): void => {
+const enterPin = async (
+  screen: Awaited<ReturnType<typeof render>>,
+  pin: string
+): Promise<void> => {
   for (const digit of pin) {
-    fireEvent.press(screen.getByText(digit));
+    await fireEvent.press(screen.getByText(digit));
   }
 };
 
-const enterSlotPin = (
-  screen: ReturnType<typeof render>,
+const enterSlotPin = async (
+  screen: Awaited<ReturnType<typeof render>>,
   prefix: string,
   pin: string
-): void => {
+): Promise<void> => {
   for (const digit of pin) {
-    fireEvent.press(screen.getByText(`${prefix}-${digit}`));
+    await fireEvent.press(screen.getByText(`${prefix}-${digit}`));
   }
 };
 
 describe("pIN flow screens", () => {
   it("sets up a PIN through create and confirm steps", async () => {
     const onComplete = mockFn();
-    const screen = render(
+    const screen = await render(
       <PinSetupScreen pinLength={4} onComplete={onComplete} />
     );
 
-    enterPin(screen, "1234");
+    await enterPin(screen, "1234");
     await waitFor(() => expect(screen.getByText("Confirm PIN")).toBeTruthy());
 
-    enterPin(screen, "1234");
+    await enterPin(screen, "1234");
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith("1234"));
     expect(onComplete).toHaveBeenCalledWith("1234");
   });
 
   it("resets setup when confirmation does not match", async () => {
     const onComplete = mockFn();
-    const screen = render(
+    const screen = await render(
       <PinSetupScreen pinLength={4} onComplete={onComplete} />
     );
 
-    enterPin(screen, "1234");
+    await enterPin(screen, "1234");
     await waitFor(() => expect(screen.getByText("Confirm PIN")).toBeTruthy());
-    enterPin(screen, "0000");
+    await enterPin(screen, "0000");
 
     expect(onComplete).not.toHaveBeenCalled();
     await waitFor(() =>
@@ -56,7 +59,7 @@ describe("pIN flow screens", () => {
 
   it("passes custom slots and styles through the PIN setup flow", async () => {
     const onComplete = mockFn();
-    const screen = render(
+    const screen = await render(
       <PinSetupScreen
         pinLength={4}
         onComplete={onComplete}
@@ -69,9 +72,9 @@ describe("pIN flow screens", () => {
       />
     );
 
-    enterSlotPin(screen, "setup", "1234");
+    await enterSlotPin(screen, "setup", "1234");
     await waitFor(() => expect(screen.getByText("Confirm PIN")).toBeTruthy());
-    enterSlotPin(screen, "setup", "1234");
+    await enterSlotPin(screen, "setup", "1234");
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith("1234"));
     expect(onComplete).toHaveBeenCalledWith("1234");
@@ -92,7 +95,7 @@ describe("pIN flow screens", () => {
       )
     );
     const onComplete = mockFn();
-    const screen = render(
+    const screen = await render(
       <ChangePinScreen
         pinLength={4}
         onVerifyCurrentPin={onVerifyCurrentPin}
@@ -100,25 +103,25 @@ describe("pIN flow screens", () => {
       />
     );
 
-    enterPin(screen, "0000");
+    await enterPin(screen, "0000");
     await waitFor(() =>
       expect(screen.getByText("Current PIN is incorrect")).toBeTruthy()
     );
 
-    enterPin(screen, "1234");
+    await enterPin(screen, "1234");
     await waitFor(() => expect(screen.getByText("New PIN")).toBeTruthy());
 
-    enterPin(screen, "5555");
+    await enterPin(screen, "5555");
     await waitFor(() => expect(screen.getByText("Confirm PIN")).toBeTruthy());
 
-    enterPin(screen, "5555");
+    await enterPin(screen, "5555");
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith("5555"));
     expect(onComplete).toHaveBeenCalledWith("5555");
   });
 
   it("resets the change flow when the new PIN confirmation does not match", async () => {
     const onComplete = mockFn();
-    const screen = render(
+    const screen = await render(
       <ChangePinScreen
         pinLength={4}
         onVerifyCurrentPin={() =>
@@ -128,12 +131,12 @@ describe("pIN flow screens", () => {
       />
     );
 
-    enterPin(screen, "1234");
+    await enterPin(screen, "1234");
     await waitFor(() => expect(screen.getByText("New PIN")).toBeTruthy());
 
-    enterPin(screen, "5555");
+    await enterPin(screen, "5555");
     await waitFor(() => expect(screen.getByText("Confirm PIN")).toBeTruthy());
-    enterPin(screen, "0000");
+    await enterPin(screen, "0000");
 
     expect(onComplete).not.toHaveBeenCalled();
     await waitFor(() =>
@@ -144,7 +147,7 @@ describe("pIN flow screens", () => {
 
   it("passes custom slots and styles through the change PIN flow", async () => {
     const onComplete = mockFn();
-    const screen = render(
+    const screen = await render(
       <ChangePinScreen
         pinLength={4}
         onVerifyCurrentPin={() =>
@@ -160,11 +163,11 @@ describe("pIN flow screens", () => {
       />
     );
 
-    enterSlotPin(screen, "change", "1234");
+    await enterSlotPin(screen, "change", "1234");
     await waitFor(() => expect(screen.getByText("New PIN")).toBeTruthy());
-    enterSlotPin(screen, "change", "5555");
+    await enterSlotPin(screen, "change", "5555");
     await waitFor(() => expect(screen.getByText("Confirm PIN")).toBeTruthy());
-    enterSlotPin(screen, "change", "5555");
+    await enterSlotPin(screen, "change", "5555");
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith("5555"));
     expect(onComplete).toHaveBeenCalledWith("5555");
