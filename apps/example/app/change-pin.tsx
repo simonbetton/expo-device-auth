@@ -9,6 +9,7 @@ const ChangePinRoute = () => {
     if (result.status === "success") {
       router.replace("/");
     }
+    return result;
   };
 
   return (

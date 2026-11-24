@@ -1,22 +1,32 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, TextStyle, ViewStyle } from "react-native";
 
 import type { PinLength } from "./types";
+import { useMountEffect } from "./use-mount-effect";
 
 const DOT = "●";
 const BACKSPACE = "⌫";
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
 
-const submitAfterPaint = (submit: () => void): void => {
-  if (typeof requestAnimationFrame !== "undefined") {
-    requestAnimationFrame(() => {
-      setTimeout(submit, 0);
-    });
-    return;
+const submitAfterPaint = (submit: () => void): (() => void) => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let frame: number | undefined;
+  const schedule = () => {
+    timer = setTimeout(submit, 0);
+  };
+  if (typeof requestAnimationFrame === "undefined") {
+    schedule();
+  } else {
+    frame = requestAnimationFrame(schedule);
   }
 
-  setTimeout(submit, 0);
+  return () => {
+    if (frame !== undefined && typeof cancelAnimationFrame !== "undefined") {
+      cancelAnimationFrame(frame);
+    }
+    clearTimeout(timer);
+  };
 };
 
 export interface PinEntryStyles {
@@ -104,6 +114,29 @@ const defaultStyles = StyleSheet.create({
   },
 });
 
+const PinKey = ({
+  label,
+  onPress,
+  renderKey,
+  styles,
+}: {
+  label: string;
+  onPress: () => void;
+  renderKey?: PinEntrySlots["Key"];
+  styles?: PinEntryStyles;
+}) =>
+  renderKey ? (
+    renderKey({ label, onPress })
+  ) : (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={[defaultStyles.key, styles?.key]}
+    >
+      <Text style={[defaultStyles.keyText, styles?.keyText]}>{label}</Text>
+    </Pressable>
+  );
+
 export const PinEntryScreen = ({
   pinLength,
   title = "Enter PIN",
@@ -113,28 +146,74 @@ export const PinEntryScreen = ({
   slots,
 }: PinEntryScreenProps) => {
   const [digits, setDigits] = useState("");
+  const input = useRef<{
+    digits: string;
+    pending: boolean;
+    disposed: boolean;
+    cancelQueued?: () => void;
+  }>({ digits: "", disposed: false, pending: false });
+  useMountEffect(() => {
+    const { current } = input;
+    current.disposed = false;
+    return () => {
+      current.disposed = true;
+      current.cancelQueued?.();
+      delete current.cancelQueued;
+      current.pending = false;
+      current.digits = "";
+    };
+  });
   const dots = useMemo(
     () =>
       Array.from({ length: pinLength }, (_, index) => index < digits.length),
     [digits.length, pinLength]
   );
 
-  const enterDigit = (digit: string) => {
-    if (digits.length >= pinLength) {
-      return;
-    }
+  const enterDigit = useCallback(
+    (digit: string) => {
+      const { current } = input;
+      if (
+        current.disposed ||
+        current.pending ||
+        current.digits.length >= pinLength
+      ) {
+        return;
+      }
 
-    const nextDigits = `${digits}${digit}`;
-    setDigits(nextDigits);
-    if (nextDigits.length === pinLength) {
-      submitAfterPaint(() => {
-        void onSubmit(nextDigits);
-      });
-    }
-  };
+      current.digits += digit;
+      const nextDigits = current.digits;
+      setDigits(nextDigits);
+      if (nextDigits.length === pinLength) {
+        current.pending = true;
+        current.cancelQueued = submitAfterPaint(() => {
+          delete current.cancelQueued;
+          if (current.disposed || !current.pending) {
+            return;
+          }
+          const submit = async () => {
+            try {
+              await onSubmit(nextDigits);
+            } catch {
+              current.digits = "";
+              if (!current.disposed) {
+                setDigits("");
+              }
+            }
+            current.pending = false;
+          };
+          void submit();
+        });
+      }
+    },
+    [onSubmit, pinLength]
+  );
 
   const removeDigit = () => {
-    setDigits((previousDigits) => previousDigits.slice(0, -1));
+    const { current } = input;
+    if (!current.disposed && !current.pending) {
+      current.digits = current.digits.slice(0, -1);
+      setDigits(current.digits);
+    }
   };
 
   return (
@@ -165,33 +244,22 @@ export const PinEntryScreen = ({
         )}
       </View>
       <View style={[defaultStyles.keypad, styleOverrides?.keypad]}>
-        {KEYS.map((digit) =>
-          slots?.Key ? (
-            <React.Fragment key={digit}>
-              {slots.Key({ label: digit, onPress: () => enterDigit(digit) })}
-            </React.Fragment>
-          ) : (
-            <Pressable
-              accessibilityRole="button"
-              key={digit}
-              onPress={() => enterDigit(digit)}
-              style={[defaultStyles.key, styleOverrides?.key]}
-            >
-              <Text style={[defaultStyles.keyText, styleOverrides?.keyText]}>
-                {digit}
-              </Text>
-            </Pressable>
-          )
-        )}
-        <Pressable
-          accessibilityRole="button"
+        {KEYS.map((digit) => (
+          <PinKey
+            key={digit}
+            label={digit}
+            onPress={() => enterDigit(digit)}
+            renderKey={slots?.Key}
+            {...(styleOverrides === undefined
+              ? {}
+              : { styles: styleOverrides })}
+          />
+        ))}
+        <PinKey
+          label={BACKSPACE}
           onPress={removeDigit}
-          style={[defaultStyles.key, styleOverrides?.key]}
-        >
-          <Text style={[defaultStyles.keyText, styleOverrides?.keyText]}>
-            {BACKSPACE}
-          </Text>
-        </Pressable>
+          {...(styleOverrides === undefined ? {} : { styles: styleOverrides })}
+        />
       </View>
       {onForgotPin
         ? (slots?.ForgotPin?.({ onPress: onForgotPin }) ?? (

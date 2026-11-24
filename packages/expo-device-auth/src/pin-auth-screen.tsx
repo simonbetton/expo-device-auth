@@ -46,10 +46,17 @@ export const PinAuthScreen = ({
   const [resetKey, setResetKey] = useState(0);
 
   const submitPin = async (pin: string) => {
-    const result =
-      mode === "reauthenticate"
-        ? await controller.reauthenticateWithPin(pin)
-        : await controller.authenticateWithPin(pin);
+    let result: AuthResult;
+    try {
+      result =
+        mode === "reauthenticate"
+          ? await controller.reauthenticateWithPin(pin)
+          : await controller.authenticateWithPin(pin);
+    } catch {
+      setMessage("Could not verify PIN. Try again.");
+      setResetKey((value) => value + 1);
+      return;
+    }
 
     if (result.status === "error" && result.error.code === "pin_mismatch") {
       setMessage("PIN does not match");
@@ -58,6 +65,8 @@ export const PinAuthScreen = ({
     }
 
     await onResult(result);
+    setMessage(null);
+    setResetKey((value) => value + 1);
   };
 
   return (

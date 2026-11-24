@@ -18,6 +18,7 @@ const enterPin = async (
   pin: string
 ): Promise<void> => {
   for (const digit of pin) {
+    // eslint-disable-next-line no-await-in-loop -- Each key press commits before entering the next digit.
     await act(async () => {
       await fireEvent.press(screen.getByText(digit));
       await Promise.resolve();
@@ -87,6 +88,7 @@ describe("pinAuthScreen", () => {
     );
 
     for (const digit of ["1", "2", "3", "4"]) {
+      // eslint-disable-next-line no-await-in-loop -- Each key press commits before entering the next digit.
       await act(async () => {
         await fireEvent.press(screen.getByText(`slot-${digit}`));
         await Promise.resolve();

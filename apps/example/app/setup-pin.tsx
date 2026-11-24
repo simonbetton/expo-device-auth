@@ -1,31 +1,39 @@
 import { PinSetupScreen, useDeviceAuth } from "expo-device-auth";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
+import type { EffectCallback } from "react";
+import { Button, Text, View } from "react-native";
 
 const PIN_ALREADY_CONFIGURED_MESSAGE = "PIN has already been configured";
 const PIN_ALREADY_CONFIGURED_ROUTE = `/?message=${encodeURIComponent(PIN_ALREADY_CONFIGURED_MESSAGE)}`;
 
-const useMountEffect = (effect: () => (() => void) | undefined): void => {
-  /* eslint-disable react-hooks/exhaustive-deps, no-restricted-syntax */
-  useEffect(effect, []);
+const useMountEffect = (effect: EffectCallback): void => {
+  const onMount = useEffectEvent(effect);
+  useEffect(() => onMount(), []);
 };
 
 const SetupPinRoute = () => {
   const deviceAuth = useDeviceAuth();
-  const [isAllowed, setIsAllowed] = useState(false);
+  const [gate, setGate] = useState<"checking" | "allowed" | "failed">(
+    "checking"
+  );
 
-  useMountEffect((): undefined => {
-    void (async () => {
+  const checkSetup = async () => {
+    setGate("checking");
+    try {
       const state = await deviceAuth.getState();
       if (state.needsSetup) {
-        setIsAllowed(true);
+        setGate("allowed");
         return;
       }
-
       router.replace(PIN_ALREADY_CONFIGURED_ROUTE);
-    })();
+    } catch {
+      setGate("failed");
+    }
+  };
 
-    return undefined;
+  useMountEffect(() => {
+    void checkSetup();
   });
 
   const completeSetup = async (pin: string) => {
@@ -41,9 +49,18 @@ const SetupPinRoute = () => {
     ) {
       router.replace(PIN_ALREADY_CONFIGURED_ROUTE);
     }
+    return result;
   };
 
-  if (!isAllowed) {
+  if (gate === "failed") {
+    return (
+      <View>
+        <Text>Could not check PIN setup.</Text>
+        <Button title="Retry" onPress={checkSetup} />
+      </View>
+    );
+  }
+  if (gate === "checking") {
     return null;
   }
 

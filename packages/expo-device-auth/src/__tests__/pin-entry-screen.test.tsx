@@ -4,7 +4,7 @@ import React from "react";
 import { Pressable, Text } from "react-native";
 
 import { PinEntryScreen } from "../pin-entry-screen";
-import { mockFn } from "../test-support/jest-mocks";
+import { deferred, mockFn } from "../test-support/jest-mocks";
 
 const selectedDots = (screen: Awaited<ReturnType<typeof render>>): boolean[] =>
   screen
@@ -69,6 +69,57 @@ describe("pinEntryScreen", () => {
     requestAnimationFrameMock.mock.calls[0]?.[0](0);
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("1234"));
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("dispatches one submission while a completed PIN is queued and checking", async () => {
+    const frame = mockFn((_handler: FrameRequestCallback) => 1);
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: frame,
+    });
+    const pending = deferred<undefined>();
+    const onSubmit = mockFn((_pin: string) => pending.promise);
+    const screen = await render(
+      <PinEntryScreen pinLength={4} onSubmit={onSubmit} />
+    );
+
+    await fireEvent.press(screen.getByText("1"));
+    await fireEvent.press(screen.getByText("2"));
+    await fireEvent.press(screen.getByText("3"));
+    await fireEvent.press(screen.getByText("4"));
+    await fireEvent.press(screen.getByText("⌫"));
+    await fireEvent.press(screen.getByText("5"));
+    expect(frame).toHaveBeenCalledTimes(1);
+
+    frame.mock.calls[0]?.[0](0);
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("1234"));
+    await fireEvent.press(screen.getByText("⌫"));
+    await fireEvent.press(screen.getByText("6"));
+    pending.resolve(undefined);
+    expect(frame).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a queued PIN on keypad unmount", async () => {
+    const frame = mockFn((_handler: FrameRequestCallback) => 1);
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: frame,
+    });
+    const onSubmit = mockFn();
+    const screen = await render(
+      <PinEntryScreen pinLength={4} onSubmit={onSubmit} />
+    );
+    await fireEvent.press(screen.getByText("1"));
+    await fireEvent.press(screen.getByText("2"));
+    await fireEvent.press(screen.getByText("3"));
+    await fireEvent.press(screen.getByText("4"));
+    await screen.unmount();
+
+    frame.mock.calls[0]?.[0](0);
+    const afterDispatch = deferred<undefined>();
+    setTimeout(() => afterDispatch.resolve(undefined), 0);
+    await afterDispatch.promise;
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("only shows Forgot PIN when the callback is explicitly provided", async () => {

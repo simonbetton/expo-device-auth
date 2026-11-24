@@ -14,24 +14,24 @@ interface QuickCryptoPbkdf2 extends HybridObject<{
   android: "c++";
   ios: "c++";
 }> {
-  pbkdf2(
+  pbkdf2: (
     password: ArrayBuffer,
     salt: ArrayBuffer,
     iterations: number,
     keyLength: number,
     digest: string
-  ): Promise<ArrayBuffer>;
+  ) => Promise<ArrayBuffer>;
 }
 
 interface QuickCryptoRandom extends HybridObject<{
   android: "c++";
   ios: "c++";
 }> {
-  randomFillSync(
+  randomFillSync: (
     buffer: ArrayBuffer,
     offset: number,
     size: number
-  ): ArrayBuffer;
+  ) => ArrayBuffer;
 }
 
 let quickCryptoPbkdf2: QuickCryptoPbkdf2 | null = null;
@@ -72,6 +72,7 @@ const mapAuthenticationType = (
 };
 
 export const createExpoSecureStoreStorage = (): DeviceAuthStorage => ({
+  coordinationKey: SecureStore,
   async deleteItem(key) {
     await SecureStore.deleteItemAsync(key);
   },

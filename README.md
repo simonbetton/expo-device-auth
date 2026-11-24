@@ -1,37 +1,31 @@
 # expo-device-auth
 
-Expo-first local device authentication for React Native apps. `expo-device-auth`
-wraps Expo biometrics with a package-owned PIN fallback, encrypted local
-credential storage, configurable session handling, and reusable PIN screens.
+Expo-first local device authentication for React Native apps. `expo-device-auth` wraps Expo biometrics with a package-owned PIN fallback, encrypted local credential storage, configurable session handling, and reusable PIN screens.
 
-This project is a pnpm monorepo containing the library package and an Expo
-Router example app.
+This project is a pnpm monorepo containing the library package and an Expo Router example app.
 
 ## Features
 
 - Biometric authentication through `expo-local-authentication`.
 - Local PIN setup, authentication, change, and reset flows.
-- Salted PIN verifier storage through Expo SecureStore; the raw PIN is never
-  stored.
-- Configurable 4- or 6-digit PINs, session expiry, lockouts, and biometric
-  preferences.
+- Salted PIN verifier storage through Expo SecureStore; the raw PIN is never stored.
+- Configurable 4- or 6-digit PINs, session expiry, lockouts, and biometric preferences.
 - Provider-owned modal prompt for sensitive reauthentication.
 - Replaceable PIN UI with style and slot APIs; no styling framework required.
-- Test-friendly controller layer with injectable storage, biometric driver,
-  clock, random byte generator, and verifier settings.
+- Test-friendly controller layer with injectable storage, biometric driver, clock, random byte generator, and verifier settings.
+
+See the [state-machine audit](docs/state-machines.md) for authentication transitions, retry behavior, and the regression tests.
 
 ## Requirements
 
-| Dependency | Supported range |
-| --- | --- |
-| Expo | `>=55 <57` |
-| React Native | `>=0.83 <0.85` |
-| React | `>=19.2.0` |
+| Dependency           | Supported range                   |
+| -------------------- | --------------------------------- |
+| Expo                 | `>=58 <59`                        |
+| React Native         | `>=0.88 <0.89`                    |
+| React                | `>=19.3.0`                        |
 | Node package manager | `pnpm@11.3.0` for this repository |
 
-Use a development build for biometric testing. Expo Go is not the supported
-target for this package because the native modules used by the config plugin
-need to be available in the app build.
+Use a development build for biometric testing. Expo Go is not the supported target for this package because the native modules used by the config plugin need to be available in the app build.
 
 ## Installation
 
@@ -40,8 +34,7 @@ npm install expo-device-auth
 npx expo install expo-local-authentication expo-secure-store
 ```
 
-The package config plugin also wires `react-native-quick-crypto`, which is used
-by the verifier implementation.
+The package config plugin also wires `react-native-quick-crypto`, which is used by the verifier implementation.
 
 ## Expo Configuration
 
@@ -72,8 +65,7 @@ Plugin options:
 
 ## Quick Start
 
-Wrap your application in `DeviceAuthProvider`, then call `useDeviceAuth()` from
-screens or actions that need local authentication.
+Wrap your application in `DeviceAuthProvider`, then call `useDeviceAuth()` from screens or actions that need local authentication.
 
 ```tsx
 import {
@@ -174,19 +166,18 @@ type DeviceAuthConfig = {
 
 Defaults:
 
-| Setting | Default |
-| --- | --- |
-| `session.timeoutMs` | `5 * 60 * 1000` |
-| `session.persistAcrossRestarts` | `false` |
-| `biometrics.defaultEnabled` | `false` |
-| `biometrics.androidSecurityLevel` | `strong` |
-| `biometrics.requireAuthToDisable` | `false` |
-| `pinAttempts.attemptsPerStep` | `5` |
-| `pinAttempts.lockoutsMs` | `[30000, 300000, 900000]` |
-| `scopeKey` | `default` |
+| Setting                           | Default                   |
+| --------------------------------- | ------------------------- |
+| `session.timeoutMs`               | `5 * 60 * 1000`           |
+| `session.persistAcrossRestarts`   | `false`                   |
+| `biometrics.defaultEnabled`       | `false`                   |
+| `biometrics.androidSecurityLevel` | `strong`                  |
+| `biometrics.requireAuthToDisable` | `false`                   |
+| `pinAttempts.attemptsPerStep`     | `5`                       |
+| `pinAttempts.lockoutsMs`          | `[30000, 300000, 900000]` |
+| `scopeKey`                        | `default`                 |
 
-`scopeKey` is included in SecureStore keys, which lets one app isolate multiple
-local auth contexts. It may contain letters, numbers, `.`, `_`, and `-`.
+`scopeKey` is included in SecureStore keys, which lets one app isolate multiple local auth contexts. It may contain letters, numbers, `.`, `_`, and `-`.
 
 ## Public API
 
@@ -194,18 +185,14 @@ local auth contexts. It may contain letters, numbers, `.`, `_`, and `-`.
 
 - `config`: local authentication configuration.
 - `controller`: optional controller override for tests or advanced integrations.
-- `storage`, `biometrics`, `randomBytes`, `verifierIterations`: optional
-  dependency overrides used when the provider creates the default controller.
-- `onForgotPin`: optional callback; the Forgot PIN action is hidden unless this
-  is provided.
-- `lockOnBackground`: locks the local session when the app leaves the active
-  state.
+- `storage`, `biometrics`, `randomBytes`, `verifierIterations`: optional dependency overrides used when the provider creates the default controller.
+- `onForgotPin`: optional callback; the Forgot PIN action is hidden unless this is provided.
+- `lockOnBackground`: locks the local session when the app leaves the active state.
 - `pinStyles` and `pinSlots`: customize the default PIN prompt UI.
 
 `useDeviceAuth()` returns:
 
-- `authenticate(options?)`: uses an existing session when valid; otherwise
-  prompts for biometrics or PIN.
+- `authenticate(options?)`: uses an existing session when valid; otherwise prompts for biometrics or PIN.
 - `reauthenticate(options?)`: always requires a fresh biometric or PIN prompt.
 - `setBiometricEnabled(enabled)`: manages the local biometric preference.
 - `setupPin({ pin, confirmation })`
@@ -237,15 +224,9 @@ Lower-level controller helpers are exported for tests and custom integrations:
 
 ## Security Model
 
-`expo-device-auth` is a local device gate. It is designed to protect app actions
-behind biometric or PIN reauthentication on the current device; it is not a
-replacement for server authorization, account recovery, or risk checks.
+`expo-device-auth` is a local device gate. It is designed to protect app actions behind biometric or PIN reauthentication on the current device; it is not a replacement for server authorization, account recovery, or risk checks.
 
-The package never stores the raw PIN. It stores a salted verifier in Expo
-SecureStore, tracks failed attempts, and applies configurable lockout windows.
-Forgot PIN recovery belongs to the host app: verify the user through your own
-account recovery flow, then call `resetDeviceAuth()` and send the user through
-PIN setup again.
+The package never stores the raw PIN. It stores a salted verifier in Expo SecureStore, tracks failed attempts, and applies configurable lockout windows. Forgot PIN recovery belongs to the host app: verify the user through your own account recovery flow, then call `resetDeviceAuth()` and send the user through PIN setup again.
 
 ## Example App
 
@@ -258,8 +239,7 @@ pnpm --filter expo-device-auth-example android
 pnpm --filter expo-device-auth-example start
 ```
 
-Use the `ios` or `android` scripts to create a development build before testing
-biometric prompts.
+Use the `ios` or `android` scripts to create a development build before testing biometric prompts.
 
 ## Development
 
@@ -294,8 +274,7 @@ packages/expo-device-auth/src   Source, tests, provider, controller, and UI
 
 ## Contributing
 
-Issues and pull requests are welcome. Please keep changes focused, include tests
-for behavior changes, and run `pnpm verify` before opening a pull request.
+Issues and pull requests are welcome. Please keep changes focused, include tests for behavior changes, and run `pnpm verify` before opening a pull request.
 
 ## License
 

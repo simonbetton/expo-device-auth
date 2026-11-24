@@ -25,17 +25,19 @@ interface StoredSession {
 }
 
 export interface DeviceAuthStorage {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<void>;
-  deleteItem(key: string): Promise<void>;
+  /** Share this identity between adapters backed by the same store. */
+  readonly coordinationKey?: object;
+  getItem: (key: string) => Promise<string | null>;
+  setItem: (key: string, value: string) => Promise<void>;
+  deleteItem: (key: string) => Promise<void>;
 }
 
 export interface BiometricDriver {
-  getAvailability(): Promise<BiometricAvailability>;
-  authenticate(options: {
+  getAvailability: () => Promise<BiometricAvailability>;
+  authenticate: (options: {
     androidSecurityLevel: "strong" | "weak";
     disableDeviceFallback: true;
-  }): Promise<{ success: true } | { success: false; error: string }>;
+  }) => Promise<{ success: true } | { success: false; error: string }>;
 }
 
 export interface DeviceAuthControllerOptions {
@@ -48,22 +50,28 @@ export interface DeviceAuthControllerOptions {
 }
 
 export interface DeviceAuthController {
-  getState(): Promise<DeviceAuthState>;
-  setupPin(input: {
+  getState: () => Promise<DeviceAuthState>;
+  setupPin: (input: {
     pin: string;
     confirmation: string;
-  }): Promise<SetupPinResult>;
-  changePin(input: {
+  }) => Promise<SetupPinResult>;
+  changePin: (input: {
     pin: string;
     confirmation: string;
-  }): Promise<SetupPinResult>;
-  authenticateWithPin(pin: string): Promise<AuthResult>;
-  authenticateWithBiometrics(): Promise<AuthResult>;
-  reauthenticateWithPin(pin: string): Promise<AuthResult>;
-  reauthenticateWithBiometrics(): Promise<AuthResult>;
-  setBiometricEnabled(enabled: boolean): Promise<PreferenceResult>;
-  lock(): Promise<void>;
-  resetDeviceAuth(): Promise<void>;
+  }) => Promise<SetupPinResult>;
+  authenticateWithPin: (
+    pin: string,
+    signal?: AbortSignal
+  ) => Promise<AuthResult>;
+  authenticateWithBiometrics: (signal?: AbortSignal) => Promise<AuthResult>;
+  reauthenticateWithPin: (
+    pin: string,
+    signal?: AbortSignal
+  ) => Promise<AuthResult>;
+  reauthenticateWithBiometrics: (signal?: AbortSignal) => Promise<AuthResult>;
+  setBiometricEnabled: (enabled: boolean) => Promise<PreferenceResult>;
+  lock: () => Promise<void>;
+  resetDeviceAuth: () => Promise<void>;
 }
 
 const pinMismatchResult = (): AuthResult => ({
@@ -74,12 +82,12 @@ const pinMismatchResult = (): AuthResult => ({
   status: "error",
 });
 
-const biometricUnavailableResult = (): AuthResult => ({
+const biometricUnavailableResult = () => ({
   error: {
-    code: "biometric_unavailable",
+    code: "biometric_unavailable" as const,
     message: "Biometric authentication is not available",
   },
-  status: "error",
+  status: "error" as const,
 });
 
 const unsupportedBiometrics: BiometricDriver = {
@@ -96,12 +104,52 @@ const unsupportedBiometrics: BiometricDriver = {
   },
 };
 
+interface ScopeOperations {
+  tail: Promise<void>;
+  revocations: number;
+  sessionGeneration: number;
+  persistentSessionBlocked: boolean;
+  biometricGeneration: number;
+  biometricPromptOpen: boolean;
+}
+
+const storageScopes = new WeakMap<object, Map<string, ScopeOperations>>();
+
+const operationsForScope = (
+  storage: DeviceAuthStorage,
+  scopeKey: string
+): ScopeOperations => {
+  const key = storage.coordinationKey ?? storage;
+  const scopes = storageScopes.get(key) ?? new Map<string, ScopeOperations>();
+  storageScopes.set(key, scopes);
+  const scope = scopes.get(scopeKey) ?? {
+    biometricGeneration: 0,
+    biometricPromptOpen: false,
+    persistentSessionBlocked: false,
+    revocations: 0,
+    sessionGeneration: 0,
+    tail: Promise.resolve(),
+  };
+  scopes.set(scopeKey, scope);
+  return scope;
+};
+
+const reauthenticationRequired = () => ({
+  error: {
+    code: "reauthentication_required" as const,
+    message: "Fresh local authentication is required",
+  },
+  status: "error" as const,
+});
+
 class StorageBackedDeviceAuthController implements DeviceAuthController {
   private readonly config: NormalizedDeviceAuthConfig;
 
   private readonly options: DeviceAuthControllerOptions;
 
-  private memorySession: StoredSession | null = null;
+  private readonly scope: ScopeOperations;
+
+  private memorySession: (StoredSession & { generation: number }) | null = null;
 
   constructor(
     config: NormalizedDeviceAuthConfig,
@@ -109,31 +157,68 @@ class StorageBackedDeviceAuthController implements DeviceAuthController {
   ) {
     this.config = config;
     this.options = options;
+    this.scope = operationsForScope(options.storage, config.scopeKey);
   }
 
   async getState(): Promise<DeviceAuthState> {
-    const credential = await this.readCredential();
     const biometricAvailability = await this.getBiometricAvailability();
-    const biometricPreferenceEnabled =
-      biometricAvailability.hardwareSupported &&
-      (credential?.biometricPreferenceEnabled ?? false);
+    return this.runInScope(async () => {
+      const credential = await this.readCredential();
+      const biometricPreferenceEnabled =
+        biometricAvailability.hardwareSupported &&
+        (credential?.biometricPreferenceEnabled ?? false);
 
-    return {
-      biometricAvailability,
-      biometricPreferenceEnabled,
-      effectiveBiometricEnabled:
-        biometricPreferenceEnabled && biometricAvailability.enrolled,
-      isSessionValid: await this.isSessionValid(),
-      needsSetup: credential === null,
-    };
+      return {
+        biometricAvailability,
+        biometricPreferenceEnabled,
+        effectiveBiometricEnabled:
+          biometricPreferenceEnabled && biometricAvailability.enrolled,
+        isSessionValid: credential !== null && (await this.isSessionValid()),
+        needsSetup: credential === null,
+      };
+    });
   }
 
-  async setupPin(input: {
+  private runInScope<Result>(
+    operation: () => Promise<Result>
+  ): Promise<Result> {
+    const result = this.scope.tail.then(operation);
+    this.scope.tail = (async () => {
+      try {
+        await result;
+      } catch {
+        // The caller observes the rejection. The queue can still run its next item.
+      }
+    })();
+    return result;
+  }
+
+  setupPin(input: {
     pin: string;
     confirmation: string;
   }): Promise<SetupPinResult> {
+    return this.runInScope(() => this.configurePin(input));
+  }
+
+  changePin(input: {
+    pin: string;
+    confirmation: string;
+  }): Promise<SetupPinResult> {
+    return this.runInScope(() => this.configurePin(input, true));
+  }
+
+  private async configurePin(
+    input: { pin: string; confirmation: string },
+    change = false
+  ): Promise<SetupPinResult> {
     const existingCredential = await this.readCredential();
-    if (existingCredential) {
+    if (change && !existingCredential) {
+      return {
+        error: { code: "no_pin", message: "No PIN has been configured" },
+        status: "error",
+      };
+    }
+    if (!change && existingCredential) {
       return {
         error: {
           code: "pin_already_configured",
@@ -143,6 +228,10 @@ class StorageBackedDeviceAuthController implements DeviceAuthController {
       };
     }
 
+    if (change && !(await this.isSessionValid())) {
+      return reauthenticationRequired();
+    }
+
     const invalidPin = this.validatePin(input.pin);
     if (invalidPin) {
       return invalidPin;
@@ -158,75 +247,37 @@ class StorageBackedDeviceAuthController implements DeviceAuthController {
       };
     }
 
-    const verifier = await createPinVerifier(input.pin, {
-      ...(this.options.verifierIterations === undefined
-        ? {}
-        : { iterations: this.options.verifierIterations }),
-      ...(this.options.pinHashDriver === undefined
-        ? {}
-        : { pinHashDriver: this.options.pinHashDriver }),
-      ...(this.options.randomBytes === undefined
-        ? {}
-        : { randomBytes: this.options.randomBytes }),
-    });
+    const verifier = await this.createVerifier(input.pin);
 
-    const biometricAvailability = await this.getBiometricAvailability();
+    const defaultPreference = this.config.biometrics.defaultEnabled;
+    const biometricAvailability =
+      !existingCredential && defaultPreference
+        ? await this.getBiometricAvailability()
+        : null;
+    const biometricPreferenceEnabled =
+      existingCredential?.biometricPreferenceEnabled ??
+      biometricAvailability?.hardwareSupported === true;
 
+    if (change && !(await this.isSessionValid())) {
+      return reauthenticationRequired();
+    }
+
+    // Revoke the old session before committing the new verifier.
+    await this.clearSession();
     await this.writeCredential({
-      biometricPreferenceEnabled:
-        this.config.biometrics.defaultEnabled &&
-        biometricAvailability.hardwareSupported,
+      ...existingCredential,
+      biometricPreferenceEnabled,
       failedAttempts: 0,
-      lockoutLevel: 0,
+      lockoutLevel: existingCredential?.lockoutLevel ?? 0,
       verifier,
       version: 1,
     });
-    await this.lock();
-
+    this.scope.biometricGeneration += 1;
     return { status: "success" };
   }
 
-  async changePin(input: {
-    pin: string;
-    confirmation: string;
-  }): Promise<SetupPinResult> {
-    const existingCredential = await this.readCredential();
-    if (!existingCredential) {
-      return {
-        error: {
-          code: "no_pin",
-          message: "No PIN has been configured",
-        },
-        status: "error",
-      };
-    }
-
-    if (!(await this.isSessionValid())) {
-      return {
-        error: {
-          code: "reauthentication_required",
-          message: "Fresh local authentication is required",
-        },
-        status: "error",
-      };
-    }
-
-    const invalidPin = this.validatePin(input.pin);
-    if (invalidPin) {
-      return invalidPin;
-    }
-
-    if (input.pin !== input.confirmation) {
-      return {
-        error: {
-          code: "pin_confirmation_mismatch",
-          message: "PIN confirmation does not match",
-        },
-        status: "error",
-      };
-    }
-
-    const verifier = await createPinVerifier(input.pin, {
+  private createVerifier(pin: string): Promise<PinVerifier> {
+    return createPinVerifier(pin, {
       ...(this.options.verifierIterations === undefined
         ? {}
         : { iterations: this.options.verifierIterations }),
@@ -237,125 +288,219 @@ class StorageBackedDeviceAuthController implements DeviceAuthController {
         ? {}
         : { randomBytes: this.options.randomBytes }),
     });
+  }
 
-    await this.writeCredential({
-      ...existingCredential,
-      failedAttempts: 0,
-      verifier,
+  authenticateWithPin(pin: string, signal?: AbortSignal): Promise<AuthResult> {
+    return this.checkPin(pin, signal);
+  }
+
+  reauthenticateWithPin(
+    pin: string,
+    signal?: AbortSignal
+  ): Promise<AuthResult> {
+    return this.checkPin(pin, signal, true);
+  }
+
+  private checkPin(
+    pin: string,
+    signal?: AbortSignal,
+    fresh = false
+  ): Promise<AuthResult> {
+    const { revocations } = this.scope;
+    const cancelled = () =>
+      signal?.aborted === true || revocations !== this.scope.revocations;
+    return this.runInScope(async () => {
+      if (cancelled()) {
+        return { status: "cancelled" };
+      }
+      if (fresh) {
+        await this.clearSession();
+      }
+      return this.verifyPinAndStartSession(pin, cancelled);
     });
-    await this.lock();
-
-    return { status: "success" };
   }
 
-  authenticateWithPin(pin: string): Promise<AuthResult> {
-    return this.verifyPinAndStartSession(pin);
-  }
-
-  async authenticateWithBiometrics(): Promise<AuthResult> {
-    const state = await this.getState();
-    if (!state.effectiveBiometricEnabled) {
+  async authenticateWithBiometrics(signal?: AbortSignal): Promise<AuthResult> {
+    const { revocations } = this.scope;
+    const availability = await this.getBiometricAvailability();
+    const generation = await this.runInScope(async () => {
+      const credential = await this.readCredential();
+      return availability.hardwareSupported &&
+        availability.enrolled &&
+        credential?.biometricPreferenceEnabled
+        ? this.scope.biometricGeneration
+        : null;
+    });
+    if (generation === null) {
       return biometricUnavailableResult();
     }
+    const cancelled = () =>
+      signal?.aborted === true ||
+      revocations !== this.scope.revocations ||
+      generation !== this.scope.biometricGeneration;
 
-    const result = await this.biometrics().authenticate({
-      androidSecurityLevel: this.config.biometrics.androidSecurityLevel,
-      disableDeviceFallback: true,
-    });
-
-    if (!result.success) {
+    if (cancelled() || !(await this.promptForBiometrics())) {
       return { status: "cancelled" };
     }
 
-    await this.startSession();
-    return { method: "biometric", status: "success" };
+    return this.runInScope(async () => {
+      // The native prompt runs outside the storage queue so lock and reset can finish.
+      const credential = await this.readCredential();
+      if (cancelled() || !credential?.biometricPreferenceEnabled) {
+        return { status: "cancelled" };
+      }
+
+      return (await this.startSession(cancelled))
+        ? { method: "biometric", status: "success" }
+        : { status: "cancelled" };
+    });
   }
 
-  async reauthenticateWithPin(pin: string): Promise<AuthResult> {
-    await this.lock();
-    return this.verifyPinAndStartSession(pin);
-  }
-
-  reauthenticateWithBiometrics(): Promise<AuthResult> {
-    return this.authenticateWithBiometrics();
+  reauthenticateWithBiometrics(signal?: AbortSignal): Promise<AuthResult> {
+    return this.authenticateWithBiometrics(signal);
   }
 
   async setBiometricEnabled(enabled: boolean): Promise<PreferenceResult> {
-    const credential = await this.readCredential();
-    if (!credential) {
-      return {
-        error: {
-          code: "no_pin",
-          message: "No PIN has been configured",
-        },
-        status: "error",
-      };
+    const { biometricGeneration, revocations } = this.scope;
+    const availability = enabled ? await this.getBiometricAvailability() : null;
+    const prepare = await this.runInScope<
+      PreferenceResult | { generation: number }
+    >(async () => {
+      const credential = await this.readCredential();
+      if (!credential) {
+        return {
+          error: { code: "no_pin", message: "No PIN has been configured" },
+          status: "error",
+        } as const;
+      }
+
+      if (enabled && biometricGeneration !== this.scope.biometricGeneration) {
+        return { status: "cancelled" };
+      }
+
+      if (!availability || !availability.hardwareSupported) {
+        if (
+          this.config.biometrics.requireAuthToDisable &&
+          credential.biometricPreferenceEnabled &&
+          !(await this.isSessionValid())
+        ) {
+          return reauthenticationRequired();
+        }
+        await this.writeBiometricPreference(credential, false);
+        return availability
+          ? biometricUnavailableResult()
+          : ({ status: "success" } as const);
+      }
+
+      if (
+        revocations !== this.scope.revocations ||
+        !(await this.isSessionValid())
+      ) {
+        return reauthenticationRequired();
+      }
+
+      if (!availability.enrolled) {
+        await this.writeBiometricPreference(credential, true);
+        return { status: "success" } as const;
+      }
+
+      return { generation: this.scope.biometricGeneration };
+    });
+    if ("status" in prepare) {
+      return prepare;
     }
 
-    if (!enabled) {
-      await this.writeCredential({
-        ...credential,
-        biometricPreferenceEnabled: false,
-      });
+    if (
+      revocations !== this.scope.revocations ||
+      prepare.generation !== this.scope.biometricGeneration ||
+      !(await this.promptForBiometrics())
+    ) {
+      return { status: "cancelled" };
+    }
+
+    return this.runInScope(async () => {
+      const credential = await this.readCredential();
+      if (
+        !credential ||
+        prepare.generation !== this.scope.biometricGeneration
+      ) {
+        return { status: "cancelled" };
+      }
+      if (
+        revocations !== this.scope.revocations ||
+        !(await this.isSessionValid())
+      ) {
+        return reauthenticationRequired();
+      }
+
+      await this.writeBiometricPreference(credential, true);
       return { status: "success" };
+    });
+  }
+
+  private async writeBiometricPreference(
+    credential: StoredCredential,
+    enabled: boolean
+  ): Promise<void> {
+    await this.writeCredential({
+      ...credential,
+      biometricPreferenceEnabled: enabled,
+    });
+    this.scope.biometricGeneration += 1;
+  }
+
+  private async promptForBiometrics(): Promise<boolean> {
+    if (this.scope.biometricPromptOpen) {
+      return false;
     }
 
-    const availability = await this.getBiometricAvailability();
-    if (!availability.hardwareSupported) {
-      await this.writeCredential({
-        ...credential,
-        biometricPreferenceEnabled: false,
-      });
-      return {
-        error: {
-          code: "biometric_unavailable",
-          message: "This device does not support biometric authentication",
-        },
-        status: "error",
-      };
-    }
-
-    if (!(await this.isSessionValid())) {
-      return {
-        error: {
-          code: "reauthentication_required",
-          message: "Fresh local authentication is required",
-        },
-        status: "error",
-      };
-    }
-
-    if (availability.enrolled) {
+    this.scope.biometricPromptOpen = true;
+    try {
       const result = await this.biometrics().authenticate({
         androidSecurityLevel: this.config.biometrics.androidSecurityLevel,
         disableDeviceFallback: true,
       });
-      if (!result.success) {
-        return {
-          status: "cancelled",
-        };
-      }
+      return result.success;
+    } finally {
+      this.scope.biometricPromptOpen = false;
     }
-
-    await this.writeCredential({
-      ...credential,
-      biometricPreferenceEnabled: true,
-    });
-    return { status: "success" };
   }
 
-  async lock(): Promise<void> {
+  lock(): Promise<void> {
+    this.revokeSession();
+    return this.runInScope(() => this.clearSession());
+  }
+
+  resetDeviceAuth(): Promise<void> {
+    this.revokeSession();
+    return this.runInScope(async () => {
+      await this.clearSession();
+      await this.options.storage.deleteItem(this.credentialKey());
+      this.scope.biometricGeneration += 1;
+    });
+  }
+
+  private revokeSession(): void {
+    this.scope.revocations += 1;
+    this.scope.sessionGeneration += 1;
+    this.scope.persistentSessionBlocked = true;
+  }
+
+  private async clearSession(): Promise<void> {
+    this.scope.sessionGeneration += 1;
+    this.scope.persistentSessionBlocked = true;
     this.memorySession = null;
     await this.options.storage.deleteItem(this.sessionKey());
   }
 
-  async resetDeviceAuth(): Promise<void> {
-    await this.lock();
-    await this.options.storage.deleteItem(this.credentialKey());
-  }
-
-  private async verifyPinAndStartSession(pin: string): Promise<AuthResult> {
+  private async verifyPinAndStartSession(
+    pin: string,
+    cancelled: () => boolean
+  ): Promise<AuthResult> {
     const credential = await this.readCredential();
+    if (cancelled()) {
+      return { status: "cancelled" };
+    }
     if (!credential) {
       return {
         error: {
@@ -377,16 +522,21 @@ class StorageBackedDeviceAuthController implements DeviceAuthController {
         ? {}
         : { pinHashDriver: this.options.pinHashDriver }
     );
-    if (isMatch) {
-      await this.writeCredential({
-        ...credential,
-        failedAttempts: 0,
-      });
-      await this.startSession();
-      return { method: "pin", status: "success" };
+    if (!isMatch) {
+      const result = await this.recordFailedPinAttempt(credential);
+      return cancelled() ? { status: "cancelled" } : result;
+    }
+    if (cancelled()) {
+      return { status: "cancelled" };
     }
 
-    return this.recordFailedPinAttempt(credential);
+    await this.writeCredential({
+      ...credential,
+      failedAttempts: 0,
+    });
+    return (await this.startSession(cancelled))
+      ? { method: "pin", status: "success" }
+      : { status: "cancelled" };
   }
 
   private async recordFailedPinAttempt(
@@ -432,7 +582,11 @@ class StorageBackedDeviceAuthController implements DeviceAuthController {
     };
   }
 
-  private async startSession(): Promise<void> {
+  private async startSession(cancelled: () => boolean): Promise<boolean> {
+    if (cancelled()) {
+      return false;
+    }
+
     const { timeoutMs } = this.config.session;
     const session: StoredSession = {
       expiresAt: timeoutMs === "infinite" ? "infinite" : this.now() + timeoutMs,
@@ -443,15 +597,25 @@ class StorageBackedDeviceAuthController implements DeviceAuthController {
         this.sessionKey(),
         JSON.stringify(session)
       );
-      return;
+      if (cancelled()) {
+        await this.clearSession();
+        return false;
+      }
+      this.scope.persistentSessionBlocked = false;
+      return true;
     }
 
-    this.memorySession = session;
+    this.memorySession = {
+      ...session,
+      generation: this.scope.sessionGeneration,
+    };
+    return true;
   }
 
   private async isSessionValid(): Promise<boolean> {
+    const generation = this.scope.sessionGeneration;
     const session = await this.readSession();
-    if (!session) {
+    if (!session || generation !== this.scope.sessionGeneration) {
       return false;
     }
 
@@ -460,7 +624,13 @@ class StorageBackedDeviceAuthController implements DeviceAuthController {
 
   private async readSession(): Promise<StoredSession | null> {
     if (!this.config.session.persistAcrossRestarts) {
-      return this.memorySession;
+      return this.memorySession?.generation === this.scope.sessionGeneration
+        ? this.memorySession
+        : null;
+    }
+
+    if (this.scope.persistentSessionBlocked) {
+      return null;
     }
 
     const value = await this.options.storage.getItem(this.sessionKey());

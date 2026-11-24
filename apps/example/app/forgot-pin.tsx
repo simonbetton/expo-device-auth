@@ -1,5 +1,6 @@
 import { useDeviceAuth } from "expo-device-auth";
 import { router } from "expo-router";
+import { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 const styles = StyleSheet.create({
@@ -33,9 +34,24 @@ const styles = StyleSheet.create({
 const ForgotPinRoute = () => {
   const deviceAuth = useDeviceAuth();
 
+  const isResetting = useRef(false);
+  const [status, setStatus] = useState<"ready" | "resetting" | "failed">(
+    "ready"
+  );
+
   const resetAfterRecovery = async () => {
-    await deviceAuth.resetDeviceAuth();
-    router.replace("/setup-pin");
+    if (isResetting.current) {
+      return;
+    }
+    isResetting.current = true;
+    setStatus("resetting");
+    try {
+      await deviceAuth.resetDeviceAuth();
+      router.replace("/setup-pin");
+    } catch {
+      setStatus("failed");
+      isResetting.current = false;
+    }
   };
 
   return (
@@ -45,7 +61,14 @@ const ForgotPinRoute = () => {
         In a real app this route would verify identity with your backend before
         clearing local device auth.
       </Text>
-      <Pressable style={styles.button} onPress={resetAfterRecovery}>
+      {status === "failed" ? (
+        <Text>Could not reset device auth. Try again.</Text>
+      ) : null}
+      <Pressable
+        disabled={status === "resetting"}
+        style={styles.button}
+        onPress={resetAfterRecovery}
+      >
         <Text style={styles.buttonText}>Simulate Verified Reset</Text>
       </Pressable>
     </View>
