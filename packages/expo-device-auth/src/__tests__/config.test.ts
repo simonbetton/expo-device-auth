@@ -28,6 +28,33 @@ describe("normalizeDeviceAuthConfig", () => {
     }
   );
 
+  it.each([
+    { pinAttempts: { attemptsPerStep: Number.NaN } },
+    { pinAttempts: { attemptsPerStep: 0 } },
+    { pinAttempts: { lockoutsMs: [] } },
+    { pinAttempts: { lockoutsMs: [-1] } },
+    { session: { timeoutMs: Number.POSITIVE_INFINITY } },
+    { session: { timeoutMs: 0 } },
+  ])(
+    "rejects policies with unreachable or invalid deadlines (%p)",
+    (policy) => {
+      expect(() =>
+        normalizeDeviceAuthConfig({ pinLength: 4, ...policy })
+      ).toThrow(/must/u);
+    }
+  );
+
+  it("snapshots the lockout ladder at normalization", () => {
+    const lockoutsMs = [300];
+    const config = normalizeDeviceAuthConfig({
+      pinAttempts: { lockoutsMs },
+      pinLength: 4,
+    });
+    lockoutsMs.length = 0;
+
+    expect(config.pinAttempts.lockoutsMs).toStrictEqual([300]);
+  });
+
   it("rejects an infinite local device-auth session that persists across restarts", () => {
     expect(() =>
       normalizeDeviceAuthConfig({

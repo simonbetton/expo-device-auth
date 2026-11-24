@@ -21,12 +21,12 @@ export interface PinVerifierOptions {
 }
 
 export interface PinHashDriver {
-  pbkdf2Sha256(input: {
+  pbkdf2Sha256: (input: {
     hashBytes: number;
     iterations: number;
     pinBytes: Uint8Array;
     saltBytes: Uint8Array;
-  }): Promise<Uint8Array>;
+  }) => Promise<Uint8Array>;
 }
 
 const toHex = (bytes: Uint8Array): string =>

@@ -172,6 +172,7 @@ describe("deviceAuthController", () => {
     await controller.setupPin({ confirmation: "1234", pin: "1234" });
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop -- Each key press commits before entering the next digit.
       await expect(
         controller.authenticateWithPin("0000")
       ).resolves.toMatchObject({
@@ -203,6 +204,7 @@ describe("deviceAuthController", () => {
     );
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop -- Each check must finish before the next attempt in this test.
       await controller.authenticateWithPin("0000");
     }
 
