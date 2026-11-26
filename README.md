@@ -18,12 +18,12 @@ See the [state-machine audit](docs/state-machines.md) for authentication transit
 
 ## Requirements
 
-| Dependency           | Supported range                   |
-| -------------------- | --------------------------------- |
-| Expo                 | `>=58 <59`                        |
-| React Native         | `>=0.88 <0.89`                    |
-| React                | `>=19.3.0`                        |
-| Node package manager | `pnpm@11.3.0` for this repository |
+| Dependency           | Supported range                    |
+| -------------------- | ---------------------------------- |
+| Expo                 | `>=58 <59`                         |
+| React Native         | `>=0.88 <0.89`                     |
+| React                | `>=19.3.0`                         |
+| Node package manager | `pnpm@12.23.0` for this repository |
 
 Use a development build for biometric testing. Expo Go is not the supported target for this package because the native modules used by the config plugin need to be available in the app build.
 

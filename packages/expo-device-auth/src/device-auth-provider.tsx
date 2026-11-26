@@ -316,7 +316,9 @@ export const DeviceAuthProvider = React.forwardRef<
               });
             }
           } catch (error) {
-            finishRequest(request, () => request.reject(error));
+            // oxlint's React compiler invariant rejects closing over the catch binding.
+            const failure = error;
+            finishRequest(request, () => request.reject(failure));
           }
         };
 
@@ -351,7 +353,9 @@ export const DeviceAuthProvider = React.forwardRef<
         }
         finishRequest(request, () => request.resolve(result));
       } catch (error) {
-        finishRequest(request, () => request.reject(error));
+        // oxlint's React compiler invariant rejects closing over the catch binding.
+        const failure = error;
+        finishRequest(request, () => request.reject(failure));
       }
     };
 
